@@ -1,0 +1,1 @@
+<!-- Viết global hook: sử dụng chung -->

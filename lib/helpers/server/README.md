@@ -1,0 +1,1 @@
+# Viết các helper function sử dụng trong các server component hoặc nghiệp vụ logic tương tác với database thông qua prisma.
