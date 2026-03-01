@@ -1,8 +1,8 @@
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 export const getUserById = async (id:string | undefined) =>{
     try {
-        const user = await prismaClient.user.findUnique({
+        const user = await prisma.user.findUnique({
             where: {
                 id
             }

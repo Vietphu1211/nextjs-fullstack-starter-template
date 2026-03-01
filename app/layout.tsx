@@ -1,15 +1,15 @@
 import { Cabin } from 'next/font/google';
 import "./globals.css";
 
-import { FooterComponent } from '@/components/custom/footer/FooterComponent';
+
 import HeaderComponent from '@/components/custom/header/HeaderComponent';
 import ToastProvider from "@/lib/providers/ToastProvider";
-import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Metadata } from 'next';
+import FooterComponent from '@/components/custom/footer/FooterComponent';
 
 export const metadata: Metadata = {
-  title: 'SafeCard Đà Nẵng - Dịch vụ Tour & Car Rental',
+  title: 'Accomodation for renting in Da Nang',
   description: 'Khám phá Đà Nẵng với dịch vụ tour và thuê xe chuyên nghiệp. An toàn, tiện lợi, giá cả hợp lý.',
   keywords: 'tour Đà Nẵng, thuê xe Đà Nẵng, du lịch Đà Nẵng, SafeCard',
 }
@@ -32,7 +32,6 @@ export default function RootLayout({
         <HeaderComponent />
         <ToastProvider>
           {children}
-          <Analytics />
           <SpeedInsights />
         </ToastProvider>
         <FooterComponent />

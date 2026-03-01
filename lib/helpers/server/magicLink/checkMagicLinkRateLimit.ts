@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { CONFIG } from "./constants";
-import { apiLogger } from "@/lib/utils/api-logger";
+import { apiLogger } from "../../api-logger";
 
 export interface RateLimitResult {
   allowed: boolean;

@@ -1,5 +1,6 @@
-// This is your Prisma schema file for Car Rental Application
-// Based on the database design documentation
+// This is your Prisma schema file for Real Estate Rental Application (RealDox Rental)
+// Comprehensive rental platform for Apartments, Houses, Condos, Town Houses, and Rooms
+// Based on research from rentals.ca, HousingAnywhere and leading rental platforms
 
 generator client {
   provider = "prisma-client-js"
@@ -9,6 +10,10 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ============================================
+// AUTHENTICATION & USER MODELS
+// ============================================
 
 model Account {
   id                String  @id @default(cuid())
@@ -29,8 +34,10 @@ model Account {
 }
 
 enum UserRole {
-  ADMIN
-  USER
+  ADMIN      // Quản trị viên hệ thống
+  LANDLORD   // Chủ nhà/người cho thuê
+  TENANT     // Người thuê
+  AGENT      // Môi giới
 }
 
 model User {
@@ -40,16 +47,75 @@ model User {
   emailVerified         DateTime?
   image                 String?
   password              String?
-  role                  UserRole               @default(USER)
+  role                  UserRole               @default(TENANT)
   isTwoFactorEnabled    Boolean                @default(false)
   bio                   String?
+  phone                 String?
+  dateOfBirth           DateTime?
+  nationality           String?
+  occupation            String?
+  // Tenant specific fields
+  employmentStatus      String?                // "EMPLOYED", "STUDENT", "RETIRED", "SELF_EMPLOYED"
+  employerName          String?
+  monthlyIncome         Float?
+  creditScore           Int?
+  hasPets               Boolean                @default(false)
+  petDetails            String?                // Type, breed, size
+  smokingStatus         String?                // "NON_SMOKER", "SMOKER", "OCCASIONAL"
+  numberOfOccupants     Int?                   // Số người dự kiến ở
+  preferredMoveInDate   DateTime?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  currentAddress        String?
+  reasonForMoving       String?
+  studentStatus         Boolean                @default(false)
+  universityName        String?
+  // Background checks
+  backgroundCheckStatus VerificationStatus     @default(UNVERIFIED)
+  backgroundCheckDate   DateTime?
+  // Meta
   acquisitionDate       DateTime?              @default(now())
   acquisitionSource     String?
   lastActiveAt          DateTime?
   lifetimeValue         Float?
+  // Landlord specific fields
+  companyName           String?
+  businessLicense       String?
+  taxId                 String?
+  averageRating         Float?                 @default(0)
+  totalReviews          Int?                   @default(0)
+  responseRate          Float?                 // Tỷ lệ phản hồi (%)
+  responseTime          Int?                   // Thời gian phản hồi trung bình (hours)
+  verificationStatus    VerificationStatus     @default(UNVERIFIED)
+  verifiedAt            DateTime?
+  // Relations
   accounts              Account[]
   sessions              Session[]
   twoFactorConfirmation TwoFactorConfirmation?
+  // Landlord relations
+  properties            Property[]             @relation("LandlordProperties")
+  // Tenant relations
+  bookings              Booking[]              @relation("TenantBookings")
+  rentalApplications    RentalApplication[]    @relation("TenantApplications")
+  reviews               Review[]               @relation("TenantReviews")
+  reviewsReceived       Review[]               @relation("LandlordReviews")
+  favoriteProperties    FavoriteProperty[]
+  savedSearches         SavedSearch[]
+  documents             Document[]
+  propertyViewings      PropertyViewing[]
+  messages              Message[]              @relation("UserMessages")
+  conversations         ConversationParticipant[]
+
+  @@index([email])
+  @@index([role])
+  @@index([verificationStatus])
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
 }
 
 model Session {
@@ -72,14 +138,10 @@ model PasswordResetToken {
   @@unique([email, token])
 }
 
-// Verification Tokens giao cho nextauth quản lý. Đổi dùng id và email thành identifier để khớp với type prisma adapter
 model VerificationToken {
-  // id      String   @id @default(cuid())
-  // email   String
   identifier String
   token      String   @unique
   expires    DateTime
-  // @@map("verification_tokens")
 
   @@unique([identifier, token])
 }
@@ -99,6 +161,679 @@ model TwoFactorToken {
   @@unique([email, token])
 }
 
+// ============================================
+// PROPERTY & LISTING MODELS
+// ============================================
 
+enum PropertyType {
+  APARTMENT       // Căn hộ chung cư
+  CONDO           // Căn hộ cao cấp
+  TOWNHOUSE       // Nhà liền kề
+  HOUSE           // Nhà riêng
+  DUPLEX          // Nhà song lập
+  STUDIO          // Studio/căn hộ một phòng
+  BASEMENT        // Tầng hầm cho thuê
+  ROOM            // Phòng đơn (shared house)
+  LOFT            // Loft
+  BACHELOR        // Bachelor/efficiency apartment
+}
 
+enum PropertyStatus {
+  DRAFT           // Bản nháp
+  ACTIVE          // Đang active, sẵn sàng cho thuê
+  INACTIVE        // Tạm ngưng
+  RENTED          // Đã cho thuê
+  PENDING         // Đang chờ xử lý
+  MAINTENANCE     // Đang bảo trì
+  ARCHIVED        // Đã lưu trữ
+}
 
+enum LeaseTerm {
+  MONTH_TO_MONTH  // Thuê theo tháng
+  SIX_MONTHS      // 6 tháng
+  ONE_YEAR        // 1 năm
+  TWO_YEARS       // 2 năm
+  FLEXIBLE        // Linh hoạt
+}
+
+enum LaundryType {
+  IN_UNIT         // Trong căn
+  IN_BUILDING     // Trong tòa nhà
+  SHARED          // Dùng chung
+  NONE            // Không có
+}
+
+enum ParkingType {
+  UNDERGROUND     // Hầm để xe
+  SURFACE         // Bãi đỗ mặt đất
+  STREET          // Đỗ đường
+  GARAGE          // Garage
+  COVERED         // Có mái che
+  NONE            // Không có
+}
+
+model Property {
+  id                String           @id @default(cuid())
+  // Basic Info
+  title             String
+  description       String           @db.Text
+  propertyType      PropertyType
+  status            PropertyStatus   @default(DRAFT)
+  
+  // Pricing
+  monthlyRent       Float
+  deposit           Float?           // Security deposit
+  depositMonths     Int              @default(1) // Số tháng deposit (1, 2, or 3)
+  utilitiesIncluded Boolean          @default(false)
+  utilitiesCost     Float?           // If not included
+  hydro             Boolean          @default(false)
+  heat              Boolean          @default(false)
+  water             Boolean          @default(false)
+  internet          Boolean          @default(false)
+  
+  // Location
+  address           String
+  city              String
+  state             String?
+  country           String
+  postalCode        String?
+  neighborhood      String?
+  latitude          Float?
+  longitude         Float?
+  
+  // Building Details
+  yearBuilt         Int?
+  numberOfUnits     Int?             // Total units in building
+  buildingName      String?
+  floor             Int?
+  totalFloors       Int?
+  unitNumber        String?
+  
+  // Property Size
+  size              Float?           // in square feet/meters
+  bedrooms          Int?
+  bathrooms         Float?           // Can be 1.5, 2.5, etc.
+  halfBathrooms     Int?             // Number of half baths
+  maxOccupants      Int              @default(1)
+  
+  // Lease Terms
+  leaseTerm         LeaseTerm        @default(ONE_YEAR)
+  availableFrom     DateTime
+  minStayMonths     Int              @default(1)
+  maxStayMonths     Int?
+  shortTermAvailable Boolean         @default(false)
+  
+  // Features & Amenities
+  furnished         Boolean          @default(false)
+  petAllowed        Boolean          @default(false)
+  petDeposit        Float?
+  petRent           Float?           // Monthly pet rent
+  smokingAllowed    Boolean          @default(false)
+  
+  // Kitchen & Bathroom
+  privateKitchen    Boolean          @default(false)
+  privateBathroom   Boolean          @default(false)
+  ensuiteBathroom   Boolean          @default(false)
+  
+  // Laundry
+  laundryType       LaundryType      @default(NONE)
+  laundryInUnit     Boolean          @default(false)
+  
+  // Parking
+  parkingType       ParkingType      @default(NONE)
+  parkingSpots      Int              @default(0)
+  parkingCost       Float?           // Monthly parking cost
+  visitorParking    Boolean          @default(false)
+  evCharging        Boolean          @default(false)
+  
+  // Climate Control
+  airConditioning   Boolean          @default(false)
+  heating           Boolean          @default(false)
+  heatingType       String?          // "Gas", "Electric", "Baseboard", "Forced Air"
+  
+  // Storage & Space
+  balcony           Boolean          @default(false)
+  patio             Boolean          @default(false)
+  yard              Boolean          @default(false)
+  storage           Boolean          @default(false)
+  storageType       String?          // "Locker", "In-unit", "Building"
+  
+  // Security
+  securitySystem    Boolean          @default(false)
+  securedEntry      Boolean          @default(false)
+  doorman           Boolean          @default(false)
+  concierge         Boolean          @default(false)
+  
+  // Accessibility
+  wheelchairAccessible Boolean       @default(false)
+  elevator          Boolean          @default(false)
+  
+  // Tenant Preferences
+  ageMin            Int?
+  ageMax            Int?
+  genderPreference  String?          // "No preference", "Male", "Female"
+  tenantType        String?          // "Students", "Professionals", "Families", "Seniors", "Any"
+  
+  // Landlord
+  landlordId        String
+  landlord          User             @relation("LandlordProperties", fields: [landlordId], references: [id], onDelete: Cascade)
+  
+  // Contact & Management
+  contactEmail      String?
+  contactPhone      String?
+  managedBy         String?          // Property management company
+  
+  // Meta
+  viewCount         Int              @default(0)
+  featured          Boolean          @default(false)
+  verified          Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  publishedAt       DateTime?
+  
+  // Relations
+  images            PropertyImage[]
+  amenities         PropertyAmenity[]
+  rules             PropertyRule[]
+  floorPlans        FloorPlan[]
+  bookings          Booking[]
+  applications      RentalApplication[]
+  reviews           Review[]
+  favorites         FavoriteProperty[]
+  viewings          PropertyViewing[]
+
+  @@index([landlordId])
+  @@index([city, country])
+  @@index([status])
+  @@index([availableFrom])
+  @@index([propertyType])
+  @@index([monthlyRent])
+  @@index([bedrooms])
+  @@index([featured])
+}
+
+model PropertyImage {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  url        String
+  caption    String?
+  alt        String?
+  order      Int      @default(0)
+  isPrimary  Boolean  @default(false)
+  roomType   String?  // "Living Room", "Kitchen", "Bedroom", "Bathroom", "Exterior"
+  createdAt  DateTime @default(now())
+
+  @@index([propertyId])
+  @@index([isPrimary])
+}
+
+model PropertyAmenity {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  amenityId  String
+  amenity    Amenity  @relation(fields: [amenityId], references: [id])
+
+  @@unique([propertyId, amenityId])
+  @@index([propertyId])
+}
+
+model Amenity {
+  id         String            @id @default(cuid())
+  name       String            @unique
+  icon       String?
+  category   String?           // "Basic", "Kitchen", "Safety", "Entertainment", "Building", "Outdoor"
+  description String?
+  properties PropertyAmenity[]
+}
+
+model PropertyRule {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  order       Int      @default(0)
+
+  @@index([propertyId])
+}
+
+model FloorPlan {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name        String   // "1 Bedroom", "2 Bedroom + Den"
+  bedrooms    Int
+  bathrooms   Float
+  size        Float?   // Square feet
+  rent        Float
+  available   Boolean  @default(true)
+  imageUrl    String?
+  description String?
+  order       Int      @default(0)
+
+  @@index([propertyId])
+}
+
+// ============================================
+// RENTAL APPLICATION MODELS
+// ============================================
+
+enum ApplicationStatus {
+  DRAFT           // Nháp
+  SUBMITTED       // Đã nộp
+  UNDER_REVIEW    // Đang xem xét
+  APPROVED        // Được chấp nhận
+  REJECTED        // Bị từ chối
+  CANCELLED       // Đã hủy
+  EXPIRED         // Hết hạn
+}
+
+model RentalApplication {
+  id              String            @id @default(cuid())
+  propertyId      String
+  property        Property          @relation(fields: [propertyId], references: [id])
+  tenantId        String
+  tenant          User              @relation("TenantApplications", fields: [tenantId], references: [id])
+  
+  // Application Details
+  status          ApplicationStatus @default(DRAFT)
+  desiredMoveIn   DateTime
+  desiredLeaseTerm String           // "1 Year", "2 Years", etc.
+  
+  // Occupants
+  numberOfAdults  Int               @default(1)
+  numberOfChildren Int              @default(0)
+  
+  // Current Housing
+  currentAddress  String?
+  currentLandlord String?
+  currentLandlordPhone String?
+  reasonForLeaving String?
+  
+  // Employment
+  employmentStatus String?
+  employerName    String?
+  employerContact String?
+  position        String?
+  monthlyIncome   Float?
+  
+  // References
+  reference1Name  String?
+  reference1Phone String?
+  reference1Relation String?
+  reference2Name  String?
+  reference2Phone String?
+  reference2Relation String?
+  
+  // Pets
+  hasPets         Boolean           @default(false)
+  petDetails      String?
+  
+  // Additional Info
+  additionalNotes String?           @db.Text
+  
+  // Landlord Response
+  reviewedAt      DateTime?
+  reviewNotes     String?           @db.Text
+  rejectionReason String?
+  
+  // Meta
+  submittedAt     DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([propertyId])
+  @@index([tenantId])
+  @@index([status])
+}
+
+// ============================================
+// PROPERTY VIEWING MODELS
+// ============================================
+
+enum ViewingStatus {
+  REQUESTED
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+model PropertyViewing {
+  id              String        @id @default(cuid())
+  propertyId      String
+  property        Property      @relation(fields: [propertyId], references: [id])
+  tenantId        String
+  tenant          User          @relation(fields: [tenantId], references: [id])
+  
+  // Viewing Details
+  scheduledDate   DateTime
+  duration        Int           @default(30) // minutes
+  status          ViewingStatus @default(REQUESTED)
+  
+  // Notes
+  tenantNotes     String?
+  landlordNotes   String?
+  
+  // Confirmation
+  confirmedAt     DateTime?
+  cancelledAt     DateTime?
+  cancellationReason String?
+  
+  // Feedback
+  attended        Boolean?
+  feedback        String?       @db.Text
+  
+  // Meta
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([propertyId])
+  @@index([tenantId])
+  @@index([scheduledDate])
+  @@index([status])
+}
+
+// ============================================
+// BOOKING & PAYMENT MODELS
+// ============================================
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REJECTED
+  COMPLETED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  OVERDUE
+}
+
+model Booking {
+  id              String        @id @default(cuid())
+  propertyId      String
+  property        Property      @relation(fields: [propertyId], references: [id])
+  tenantId        String
+  tenant          User          @relation("TenantBookings", fields: [tenantId], references: [id])
+  
+  // Dates
+  moveInDate      DateTime
+  moveOutDate     DateTime
+  leaseTerm       String        // "1 Year", "Month-to-Month"
+  
+  // Status
+  status          BookingStatus @default(PENDING)
+  
+  // Pricing
+  monthlyRent     Float
+  deposit         Float
+  firstMonthRent  Float
+  lastMonthRent   Float?
+  petDeposit      Float?
+  totalAmount     Float
+  
+  // Payment Terms
+  rentDueDay      Int           @default(1) // Day of month rent is due
+  
+  // Cancellation
+  cancelledAt     DateTime?
+  cancelledBy     String?       // "TENANT" or "LANDLORD"
+  cancellationReason String?
+  refundAmount    Float?
+  
+  // Meta
+  confirmedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Relations
+  payments        Payment[]
+  contract        Contract?
+
+  @@index([propertyId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([moveInDate])
+  @@index([moveOutDate])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  bookingId       String
+  booking         Booking       @relation(fields: [bookingId], references: [id])
+  
+  amount          Float
+  paymentType     String        // "DEPOSIT", "RENT", "PET_DEPOSIT", "UTILITIES", "FEE", "LATE_FEE"
+  description     String?
+  
+  status          PaymentStatus @default(PENDING)
+  paymentMethod   String?       // "CREDIT_CARD", "DEBIT_CARD", "BANK_TRANSFER", "CHECK", "CASH"
+  
+  // Transaction Info
+  transactionId   String?
+  receiptUrl      String?
+  
+  // Dates
+  dueDate         DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model Contract {
+  id              String   @id @default(cuid())
+  bookingId       String   @unique
+  booking         Booking  @relation(fields: [bookingId], references: [id])
+  
+  contractUrl     String?
+  contractPdf     String?  // Generated PDF URL
+  
+  // Signing
+  signedByTenant  Boolean  @default(false)
+  tenantSignedAt  DateTime?
+  tenantSignature String?
+  
+  signedByLandlord Boolean @default(false)
+  landlordSignedAt DateTime?
+  landlordSignature String?
+  
+  // Full execution
+  fullyExecuted   Boolean  @default(false)
+  executedAt      DateTime?
+  
+  // Meta
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ============================================
+// REVIEW & RATING MODELS
+// ============================================
+
+model Review {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenantId    String
+  tenant      User     @relation("TenantReviews", fields: [tenantId], references: [id])
+  landlordId  String
+  landlord    User     @relation("LandlordReviews", fields: [landlordId], references: [id])
+  
+  // Ratings (1-5 scale)
+  overallRating Float
+  cleanliness   Float?
+  accuracy      Float?
+  communication Float?
+  location      Float?
+  value         Float?
+  condition     Float?   // Condition of property
+  
+  // Review Content
+  title       String?
+  comment     String   @db.Text
+  pros        String?  @db.Text
+  cons        String?  @db.Text
+  
+  // Would Recommend
+  wouldRecommend Boolean?
+  
+  // Landlord Response
+  landlordResponse String? @db.Text
+  respondedAt      DateTime?
+  
+  // Verification
+  verified    Boolean  @default(false)
+  
+  // Meta
+  helpful     Int      @default(0)  // Helpful count
+  reported    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([propertyId])
+  @@index([tenantId])
+  @@index([landlordId])
+  @@index([overallRating])
+  @@index([createdAt])
+}
+
+// ============================================
+// FAVORITES & SEARCH MODELS
+// ============================================
+
+model FavoriteProperty {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, propertyId])
+  @@index([userId])
+}
+
+model SavedSearch {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  searchQuery String   @db.Text // JSON string of search parameters
+  alertEnabled Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ============================================
+// DOCUMENT VERIFICATION MODELS
+// ============================================
+
+enum DocumentType {
+  PROOF_OF_IDENTITY      // ID card, Passport, Driver's License
+  PROOF_OF_INCOME        // Pay stubs, Bank statements, Tax returns
+  PROOF_OF_EMPLOYMENT    // Employment letter, Contract
+  PROOF_OF_ENROLLMENT    // Student ID, University letter
+  CREDIT_REPORT          // Credit check
+  REFERENCE_LETTER       // From previous landlord
+  BACKGROUND_CHECK       // Criminal background check
+  OTHER
+}
+
+model Document {
+  id             String             @id @default(cuid())
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  documentType   DocumentType
+  fileName       String
+  fileUrl        String
+  fileSize       Int?               // in bytes
+  mimeType       String?
+  
+  // Verification
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedBy     String?            // Admin ID who verified
+  verifiedAt     DateTime?
+  rejectionReason String?
+  
+  // Dates
+  uploadedAt     DateTime           @default(now())
+  expiresAt      DateTime?          // For documents that expire
+
+  @@index([userId])
+  @@index([documentType])
+  @@index([verificationStatus])
+}
+
+// ============================================
+// MESSAGING MODELS
+// ============================================
+
+model Conversation {
+  id           String                    @id @default(cuid())
+  propertyId   String?                   // Optional: related to specific property
+  subject      String?
+  lastMessageAt DateTime?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([propertyId])
+  @@index([lastMessageAt])
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String?      // "TENANT", "LANDLORD", "AGENT"
+  joinedAt       DateTime     @default(now())
+  lastReadAt     DateTime?
+  muted          Boolean      @default(false)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@index([conversationId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation("UserMessages", fields: [senderId], references: [id])
+  
+  content        String       @db.Text
+  attachments    String?      // JSON array of attachment URLs
+  
+  isRead         Boolean      @default(false)
+  readAt         DateTime?
+  
+  isDeleted      Boolean      @default(false)
+  deletedAt      DateTime?
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+}
